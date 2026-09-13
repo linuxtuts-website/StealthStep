@@ -11,9 +11,8 @@ StealthStep tracks your steps, provides local statistics, and maps your routes e
 * **Local Storage Only:** Your data never leaves your smartphone.
 * **Open Source:** Fully transparent, auditable codebase.
 
-## Support the Development
-StealthStep is free, open-source, and strictly ad-free. If you appreciate software that respects your privacy, consider supporting the developer:
-[🍺 Buy me a beer / Coffee](INSERISCI_QUI_IL_LINK_KOFI_O_PAYPAL)
+## About the Author & Official Website
+StealthStep is proudly developed and maintained by the creator of **linuxtuts.online**.
+It is released as 100% free and open-source software. No donations accepted, no strings attached.
 
-## About the Author
-Developed and maintained by the creator of [linuxtuts.online](https://linuxtuts.online). 
+🌐 Visit [linuxtuts.online](https://linuxtuts.online) for purist Linux tutorials, advanced server hardening, and strictly code-only sysadmin guides.
