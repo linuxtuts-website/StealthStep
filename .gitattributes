@@ -1,0 +1,9 @@
+# Ignore web folders and generated templates for GitHub language stats
+web/* linguist-vendored
+ios/* linguist-vendored
+macos/* linguist-vendored
+windows/* linguist-vendored
+linux/* linguist-vendored
+*.html linguist-generated
+*.css linguist-generated
+*.js linguist-generated

@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:csv/csv.dart';
 import 'database_helper.dart';
 
 class StatsTab extends StatefulWidget {
@@ -76,16 +80,56 @@ class _StatsTabState extends State<StatsTab> {
     });
   }
 
+  // EXPORT CSV - FOSS style: i dati sono tuoi, portateli dove vuoi
+  Future<void> _exportCsv() async {
+    if (_data.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessun dato da esportare')),
+      );
+      return;
+    }
+
+    // Righe riempite con 0 passi non hanno distance/calories: fallback sicuro
+    final rows = <List<dynamic>>[
+      ['date', 'steps', 'distance_km', 'calories', 'active_time_seconds'],
+      for (final row in _data) [
+        row['date'],
+        row['steps'] ?? 0,
+        (row['distance'] ?? 0).toStringAsFixed(3),
+        (row['calories'] ?? 0).toStringAsFixed(2),
+        row['active_time'] ?? 0,
+      ],
+    ];
+
+    // FIX: era CsvToListConverter (parsa IN INPUT) - per GENERARE CSV
+    // serve ListToCsvConverter
+    final csv = ListToCsvConverter(fieldDelimiter: ',', eol: '\n').convert(rows);
+
+    try {
+      await Share.shareXFiles(
+        [XFile.fromData(
+          Uint8List.fromList(utf8.encode(csv)),
+          name: 'stealthstep_export_${DateTime.now().millisecondsSinceEpoch}.csv',
+          mimeType: 'text/csv',
+        )],
+        subject: 'StealthStep Export',
+        text: 'Esportazione dati attività - ${_data.length} giorni',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore export: $e')),
+      );
+    }
+  }
+
   Future<void> _showRoutePopup(String date) async {
     final points = await DatabaseHelper.instance.getRoute(date);
     if (!mounted) return;
-    
+
     if (points.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nessun percorso GPS salvato per questo giorno.', style: TextStyle(color: Colors.white)),
-          backgroundColor: Color(0xFF1E1E1E),
-          behavior: SnackBarBehavior.floating,
+          content: Text('Nessun percorso GPS salvato per questo giorno.'),
         ),
       );
       return;
@@ -99,7 +143,7 @@ class _StatsTabState extends State<StatsTab> {
           children: [
             const Icon(Icons.map, color: _accent),
             const SizedBox(width: 8),
-            Text('Sessione del $date', style: const TextStyle(color: _accent, fontSize: 16)),
+            Text('Sessione del $date', style: const TextStyle(color: _accent)),
           ],
         ),
         content: SizedBox(
@@ -108,10 +152,7 @@ class _StatsTabState extends State<StatsTab> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: FlutterMap(
-              options: MapOptions(
-                initialCenter: points.last,
-                initialZoom: 15.0,
-              ),
+              options: MapOptions(initialCenter: points.last, initialZoom: 15.0),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -119,11 +160,7 @@ class _StatsTabState extends State<StatsTab> {
                 ),
                 PolylineLayer(
                   polylines: [
-                    Polyline(
-                      points: points,
-                      strokeWidth: 5.0,
-                      color: Colors.blueAccent,
-                    ),
+                    Polyline(points: points, strokeWidth: 5.0, color: Colors.blueAccent),
                   ],
                 ),
               ],
@@ -143,7 +180,7 @@ class _StatsTabState extends State<StatsTab> {
   double get _maxY {
     double max = _goalSteps;
     for (final row in _data) {
-      final s = (row['steps'] as int).toDouble();
+      final s = (row['steps'] as int? ?? 0).toDouble();
       if (s > max) max = s;
     }
     return ((max / 2000).ceil() * 2000).toDouble();
@@ -151,7 +188,8 @@ class _StatsTabState extends State<StatsTab> {
 
   int get _yInterval => _maxY <= 20000 ? 5000 : 10000;
 
-  int get _totalSteps => _data.fold(0, (sum, row) => sum + (row['steps'] as int));
+  int get _totalSteps =>
+      _data.fold(0, (sum, row) => sum + (row['steps'] as int? ?? 0));
 
   Widget _statCard(IconData icon, String value, String label) {
     return Expanded(
@@ -213,6 +251,22 @@ class _StatsTabState extends State<StatsTab> {
               _statCard(Icons.local_fire_department, '${(_totalSteps * 0.04).round()}', 'KCAL'),
             ],
           ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _exportCsv,
+                icon: const Icon(Icons.download),
+                label: const Text('Export CSV'),
+                style: OutlinedButton.styleFrom(foregroundColor: _accent),
+              ),
+              const Spacer(),
+              Text(
+                _data.isEmpty ? 'No data' : '${_data.length} giorni',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
           Expanded(
             child: _data.isEmpty
@@ -239,10 +293,8 @@ class _StatsTabState extends State<StatsTab> {
                       ),
                       barTouchData: BarTouchData(
                         enabled: true,
-                        touchCallback: (FlTouchEvent event, barTouchResponse) async {
-                          // IL FIX È TUTTO QUI: Nessun filtro preventivo sull'interazione!
+                        touchCallback: (event, barTouchResponse) {
                           if (barTouchResponse == null || barTouchResponse.spot == null) return;
-                          
                           if (event is FlTapUpEvent) {
                             final index = barTouchResponse.spot!.touchedBarGroupIndex;
                             if (index >= 0 && index < _data.length) {
@@ -301,7 +353,7 @@ class _StatsTabState extends State<StatsTab> {
                             x: i,
                             barRods: [
                               BarChartRodData(
-                                toY: (_data[i]['steps'] as int).toDouble(),
+                                toY: ((_data[i]['steps'] as int?) ?? 0).toDouble(),
                                 width: _data.length > 12 ? 8 : 20,
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                                 gradient: const LinearGradient(
